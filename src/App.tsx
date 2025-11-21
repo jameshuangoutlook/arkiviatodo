@@ -1,52 +1,61 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link, NavLink, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import ToDoManager from './ToDoManager';
 import Login from './Login';
 import Register from './Register';
 import Profile from './Profile';
 import { auth } from './firebase';
 
-type Page = 'login' | 'register' | 'profile' | 'todos';
-
 function App() {
-  const [page, setPage] = useState<Page>('login');
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState<boolean>(!!auth.currentUser);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged(user => {
+      setLoggedIn(!!user);
+    });
+    return () => unsub();
+  }, []);
 
   const handleLogin = () => {
     setLoggedIn(true);
-    setPage('todos');
+    navigate('/todos');
   };
   const handleRegister = () => {
     setLoggedIn(true);
-    setPage('todos');
+    navigate('/todos');
   };
   const handleLogout = async () => {
     await auth.signOut();
     setLoggedIn(false);
-    setPage('login');
+    navigate('/login');
   };
 
   return (
     <div>
       <nav className="navbar navbar-expand-lg navbar-light bg-light">
         <div className="container">
-          <a className="navbar-brand" href="#">ToDo App</a>
+          <Link className="navbar-brand" to="/">ToDo App</Link>
           <div className="collapse navbar-collapse">
             <ul className="navbar-nav ms-auto">
-              {!loggedIn && <li className="nav-item"><button className="btn btn-link nav-link" onClick={() => setPage('login')}>Login</button></li>}
-              {!loggedIn && <li className="nav-item"><button className="btn btn-link nav-link" onClick={() => setPage('register')}>Register</button></li>}
-              {loggedIn && <li className="nav-item"><button className="btn btn-link nav-link" onClick={() => setPage('todos')}>ToDos</button></li>}
-              {loggedIn && <li className="nav-item"><button className="btn btn-link nav-link" onClick={() => setPage('profile')}>Profile</button></li>}
+              {!loggedIn && <li className="nav-item"><NavLink className="nav-link" to="/login">Login</NavLink></li>}
+              {!loggedIn && <li className="nav-item"><NavLink className="nav-link" to="/register">Register</NavLink></li>}
+              {loggedIn && <li className="nav-item"><NavLink className="nav-link" to="/todos">ToDos</NavLink></li>}
+              {loggedIn && <li className="nav-item"><NavLink className="nav-link" to="/profile">Profile</NavLink></li>}
               {loggedIn && <li className="nav-item"><button className="btn btn-outline-secondary" onClick={handleLogout}>Logout</button></li>}
             </ul>
           </div>
         </div>
       </nav>
       <div className="container mt-4">
-        {page === 'login' && <Login onLogin={handleLogin} />}
-        {page === 'register' && <Register onRegister={handleRegister} />}
-        {page === 'profile' && <Profile onLogout={handleLogout} />}
-        {page === 'todos' && loggedIn && <ToDoManager />}
+        <Routes>
+          <Route path="/" element={loggedIn ? <Navigate to="/todos" replace /> : <Navigate to="/login" replace />} />
+          <Route path="/login" element={<Login onLogin={handleLogin} />} />
+          <Route path="/register" element={<Register onRegister={handleRegister} />} />
+          <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
+          <Route path="/todos" element={loggedIn ? <ToDoManager /> : <Navigate to="/login" replace />} />
+        </Routes>
       </div>
     </div>
   );

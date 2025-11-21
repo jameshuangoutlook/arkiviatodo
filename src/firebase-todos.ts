@@ -60,10 +60,12 @@ export async function fetchTodos() {
   }
 }
 
-export async function createTodo(id: string, description: string) {
+export async function createTodo(description: string) {
   try {
     const todosCollection = getUserTodosCollection();
-    await setDoc(doc(todosCollection, id), { description, done: false, sharedWith: [] });
+    const newRef = doc(todosCollection); // auto-generated ID
+    await setDoc(newRef, { description, done: false, sharedWith: [] });
+    return newRef.id;
   } catch (err: any) {
     console.error('createTodo error', err);
     throw err;

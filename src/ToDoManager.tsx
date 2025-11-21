@@ -1,19 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { auth } from './firebase';
-import { fetchTodos, createTodo, updateTodo, setTodoDone, deleteTodo, shareTodo, updateTodoForOwner, setTodoDoneForOwner, deleteTodoForOwner } from './firebase-todos';
-import { fetchAllUserEmails } from './firebase-todos';
-
-type ToDo = {
-  id: string;
-  description: string;
-  done: boolean;
-  sharedWith?: string[];
-  ownerId?: string;
-};
+import ToDoManagerView, { ToDo } from './ToDoManagerView';
+import { fetchTodos, createTodo, updateTodo, setTodoDone, deleteTodo, shareTodo, updateTodoForOwner, setTodoDoneForOwner, deleteTodoForOwner, fetchAllUserEmails } from './firebase-todos';
 
 const ToDoManager: React.FC = () => {
   const [todos, setTodos] = useState<ToDo[]>([]);
-  const [newId, setNewId] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [shareId, setShareId] = useState('');
@@ -38,11 +29,7 @@ const ToDoManager: React.FC = () => {
     }
   };
 
-  const emailMatches = (sharedWith: any, email: string | undefined) => {
-    if (!email || !Array.isArray(sharedWith)) return false;
-    const target = email.toLowerCase().trim();
-    return sharedWith.some((s: any) => typeof s === 'string' && s.toLowerCase().trim() === target);
-  };
+  
 
   const addToast = (variant: 'success'|'danger'|'info'|'warning', message: string, title?: string) => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
@@ -68,6 +55,7 @@ const ToDoManager: React.FC = () => {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(() => {
       refreshTodos();
@@ -90,11 +78,10 @@ const ToDoManager: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      await createTodo(newId, newDescription);
-      setNewId('');
+      const createdId = await createTodo(newDescription);
       setNewDescription('');
       await refreshTodos();
-      addToast('success', 'ToDo created', 'Success');
+      addToast('success', `ToDo created (id: ${createdId})`, 'Success');
     } catch (err: any) {
       console.error('handleCreate error', err);
       const msg = firebaseErrorMessage(err);
@@ -168,6 +155,35 @@ const ToDoManager: React.FC = () => {
     }
   };
 
+  // copy helper used by view
+  const handleCopy = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      addToast('info', `Copied ID ${id} to clipboard`, 'Copied');
+    } catch (err: any) {
+      addToast('danger', 'Could not copy ID to clipboard', 'Copy failed');
+    }
+  };
+
+  // owner share helper used by view (prompts for email)
+  const handleOwnerShare = async (id: string) => {
+    const email = window.prompt('Enter recipient email to share this ToDo:');
+    if (!email) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await shareTodo(id, email);
+      await refreshTodos();
+      addToast('success', `ToDo shared with ${email}`, 'Shared');
+    } catch (err: any) {
+      const msg = firebaseErrorMessage(err);
+      setError(msg);
+      addToast('danger', msg, 'Share failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ...existing code...
 
   if (!auth.currentUser) {
@@ -195,82 +211,26 @@ const ToDoManager: React.FC = () => {
   };
 
   return (
-    <div className="container my-4">
-      <h1 className="mb-4">ToDo Manager</h1>
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      <div className="card mb-3">
-        <div className="card-body">
-          <form onSubmit={handleCreate} className="row g-2">
-            <div className="col-auto">
-              <input className="form-control" type="text" placeholder="ID" value={newId} onChange={e => setNewId(e.target.value)} required />
-            </div>
-            <div className="col">
-              <input className="form-control" type="text" placeholder="Description" value={newDescription} onChange={e => setNewDescription(e.target.value)} required />
-            </div>
-            <div className="col-auto">
-              <button className="btn btn-primary" type="submit" disabled={loading}>Add ToDo</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div className="card mb-3">
-        <div className="card-body">
-          <form onSubmit={handleShare} className="row g-2 align-items-center">
-            <div className="col-auto">
-              <input className="form-control" type="text" placeholder="ToDo ID to share" value={shareId} onChange={e => setShareId(e.target.value)} required />
-            </div>
-            <div className="col-auto">
-              <input className="form-control" type="email" placeholder="Recipient Email" value={shareEmail} onChange={e => setShareEmail(e.target.value)} required />
-            </div>
-            <div className="col-auto">
-              <button className="btn btn-secondary" type="submit" disabled={loading}>Share ToDo</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div className="list-group">
-        {todos.map(todo => (
-          <div key={todo.id} className="list-group-item list-group-item-action mb-2">
-            <div className="d-flex align-items-center">
-              <div className="me-3"><strong>ID:</strong> {todo.id}</div>
-              <div className="me-2">
-                <span className="badge bg-light text-dark">
-                  {todo.ownerId && todo.ownerId === auth.currentUser?.uid ? 'You' : (userList.find(u => u.uid === todo.ownerId)?.email ?? todo.ownerId ?? 'Unknown')}
-                </span>
-              </div>
-              <div className="form-check form-check-inline me-2">
-                <input className="form-check-input" type="checkbox" checked={todo.done} onChange={e => handleDone(todo.ownerId, todo.id, e.target.checked)} />
-              </div>
-              <div className="flex-grow-1 me-2">
-                <input className="form-control" type="text" value={todo.description} onChange={e => handleUpdate(todo.ownerId, todo.id, e.target.value)} />
-              </div>
-              <div>
-                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(todo.ownerId, todo.id)} disabled={loading}>Delete</button>
-              </div>
-            </div>
-            {todo.sharedWith && todo.sharedWith.length > 0 && (
-              <div className="mt-2 text-muted">Shared with: {todo.sharedWith.join(', ')}</div>
-            )}
-          </div>
-        ))}
-      </div>
-      
-      {loading && <p>Loading...</p>}
-      <div aria-live="polite" aria-atomic="true" className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1060 }}>
-        {toasts.map(t => (
-          <div key={t.id} className={`toast show text-bg-${t.variant} mb-2`} role="alert" aria-live="assertive" aria-atomic="true">
-            <div className="toast-header">
-              <strong className="me-auto">{t.title ?? 'Notice'}</strong>
-              <button type="button" className="btn-close btn-close-white ms-2 mb-1" onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))}></button>
-            </div>
-            <div className="toast-body">{t.message}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <ToDoManagerView
+      todos={todos}
+      loading={loading}
+      error={error}
+      newDescription={newDescription}
+      setNewDescription={setNewDescription}
+      handleCreate={handleCreate}
+      shareId={shareId}
+      setShareId={setShareId}
+      shareEmail={shareEmail}
+      setShareEmail={setShareEmail}
+      handleShare={handleShare}
+      handleDone={handleDone}
+      handleUpdate={handleUpdate}
+      handleDelete={handleDelete}
+      userList={userList}
+      toasts={toasts}
+      onCopy={handleCopy}
+      onOwnerShare={handleOwnerShare}
+    />
   );
 };
 
